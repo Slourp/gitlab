@@ -6,25 +6,22 @@ services:
     restart: always
     environment:
       GITLAB_OMNIBUS_CONFIG: |
-        external_url 'http://${DOMAIN}.traefik.me:8929'
+        external_url 'https://${DOMAIN}.traefik.me'
         gitlab_rails['gitlab_shell_ssh_port'] = 2224
-        gitlab_rails['gitlab_signup_enabled'] = true
-        gitlab_rails['signup_approval_required'] = false
-        gitlab_rails['initial_signup_state'] = 'enabled'
-        gitlab_rails['gitlab_default_can_create_group'] = true
-        gitlab_rails['smtp_enable'] = true
-        gitlab_rails['smtp_address'] = "smtp.example.com"
-        gitlab_rails['smtp_port'] = 587
-        gitlab_rails['smtp_user_name'] = "your_email@example.com"
-        gitlab_rails['smtp_password'] = "your_smtp_password"
-        gitlab_rails['smtp_domain'] = "example.com"
-        gitlab_rails['smtp_authentication'] = "plain"
-        gitlab_rails['smtp_enable_starttls_auto'] = true
-        gitlab_rails['smtp_tls'] = false
-        gitlab_rails['smtp_ssl'] = false
-        gitlab_rails['smtp_openssl_verify_mode'] = 'none'
+        letsencrypt['enabled'] = false
+        nginx['listen_port'] = 80
+        nginx['listen_https'] = false
+        nginx['proxy_set_headers'] = {
+          "X-Forwarded-Proto" => "https",
+          "X-Forwarded-Ssl" => "on",
+          "Host" => "${DOMAIN}.traefik.me",
+          "X-Real-IP" => "$$remote_addr",
+          "X-Forwarded-For" => "$$proxy_add_x_forwarded_for",
+          "Upgrade" => "$$http_upgrade",
+          "Connection" => "$$connection_upgrade"
+        }
+
     ports:
-      - '8929:8929'
       - '2224:22'
     volumes:
       - gitlab-config:/etc/gitlab
@@ -33,35 +30,27 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.${PROJECT_NAME}_GITLAB.rule=Host(`${DOMAIN}.traefik.me`)"
-      - "traefik.http.services.${PROJECT_NAME}_GITLAB.loadbalancer.server.port=8929"
+      - "traefik.http.services.${PROJECT_NAME}_GITLAB.loadbalancer.server.port=80"
       - "traefik.http.routers.${PROJECT_NAME}_GITLAB.tls=true"
       - "traefik.http.routers.${PROJECT_NAME}_GITLAB.tls.domains[0].main=${DOMAIN}.traefik.me"
       - "traefik.http.routers.${PROJECT_NAME}_GITLAB.tls.domains[0].sans=*.${DOMAIN}.traefik.me"
     networks:
       default:
-        aliases:
-          - ${PROJECT_NAME}_GITLAB
-          - ${DOMAIN}.traefik.me
       project-network:
-        aliases:
-          - ${PROJECT_NAME}_GITLAB
-          - ${DOMAIN}.traefik.me
-  runner:
+  gitlab_runner:
     image: gitlab/gitlab-runner:latest
-    container_name: ${PROJECT_NAME}_GITLAB-RUNNER
+    container_name: ${PROJECT_NAME}_RUNNER
     restart: always
-    environment:
-      - CI_SERVER_URL=http://gitlab:8929/
-      - REGISTRATION_TOKEN=${REGISTRATION_TOKEN}
-      - RUNNER_EXECUTOR=docker
-      - DOCKER_IMAGE=docker:stable
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-      - runner-config:/etc/gitlab-runner
+      - gitlab-runner:/etc/gitlab-runner
+    depends_on:
+      - gitlab
     networks:
+      default:
       project-network:
-        aliases:
-          - runner
+
+
 networks:
   default:
     name: ${NETWORK_NAME}
@@ -70,6 +59,10 @@ networks:
     internal: true
 volumes:
   gitlab-config:
-    name: ${PROJECT_NAME}_3_gitlab-config
+    name: ${PROJECT_NAME}_13gitlab-config
   gitlab-logs:
-    name: ${PROJECT_NAME}_3_gitlab-logs
+    name: ${PROJECT_NAME}_13gitlab-logs
+  gitlab-data:
+    name: ${PROJECT_NAME}_13gitlab-data
+  gitlab-runner:
+    name: ${PROJECT_NAME}_13gitlab-runner
