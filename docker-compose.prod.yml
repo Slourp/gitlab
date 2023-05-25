@@ -6,21 +6,14 @@ services:
     restart: always
     environment:
       GITLAB_OMNIBUS_CONFIG: |
-        external_url 'https://${DOMAIN}.traefik.me'
+        external_url 'https://${DOMAIN_URL}'
         gitlab_rails['gitlab_shell_ssh_port'] = 2224
-        letsencrypt['enabled'] = false
         nginx['listen_port'] = 80
         nginx['listen_https'] = false
         nginx['proxy_set_headers'] = {
           "X-Forwarded-Proto" => "https",
-          "X-Forwarded-Ssl" => "on",
-          "Host" => "${DOMAIN}.traefik.me",
-          "X-Real-IP" => "$$remote_addr",
-          "X-Forwarded-For" => "$$proxy_add_x_forwarded_for",
-          "Upgrade" => "$$http_upgrade",
-          "Connection" => "$$connection_upgrade"
+          "X-Forwarded-Ssl" => "on"
         }
-
     ports:
       - '2224:22'
     volumes:
@@ -29,14 +22,15 @@ services:
       - gitlab-data:/var/opt/gitlab
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.${PROJECT_NAME}_GITLAB.rule=Host(`${DOMAIN}.traefik.me`)"
       - "traefik.http.services.${PROJECT_NAME}_GITLAB.loadbalancer.server.port=80"
-      - "traefik.http.routers.${PROJECT_NAME}_GITLAB.tls=true"
-      - "traefik.http.routers.${PROJECT_NAME}_GITLAB.tls.domains[0].main=${DOMAIN}.traefik.me"
-      - "traefik.http.routers.${PROJECT_NAME}_GITLAB.tls.domains[0].sans=*.${DOMAIN}.traefik.me"
+      - "traefik.http.routers.${PROJECT_NAME}_GITLAB.rule=Host(`${DOMAIN_URL}`)"
+      - "traefik.http.routers.${PROJECT_NAME}_GITLAB.entrypoints=websecure"
+      - "traefik.http.routers.${PROJECT_NAME}_GITLAB.tls.certresolver=myhttpchallenge"
+
     networks:
       default:
-      project-network:
+
+
   gitlab_runner:
     image: gitlab/gitlab-runner:latest
     container_name: ${PROJECT_NAME}_RUNNER
@@ -48,21 +42,24 @@ services:
       - gitlab
     networks:
       default:
-      project-network:
+  busybox:
+    image: busybox:latest
+    container_name: ${PROJECT_NAME}_BUSYBOX
+    restart: always
+    command: sh -c "while true; do sleep 3600; done"
+    networks:
+      default:
 
 
 networks:
   default:
     name: ${NETWORK_NAME}
-  project-network:
-    name: ${PROJECT_NAME}-NETWORK
-    internal: true
 volumes:
   gitlab-config:
-    name: ${PROJECT_NAME}_13gitlab-config
+    name: ${PROJECT_NAME}_15gitlab-config
   gitlab-logs:
-    name: ${PROJECT_NAME}_13gitlab-logs
+    name: ${PROJECT_NAME}_15gitlab-logs
   gitlab-data:
-    name: ${PROJECT_NAME}_13gitlab-data
+    name: ${PROJECT_NAME}_15gitlab-data
   gitlab-runner:
-    name: ${PROJECT_NAME}_13gitlab-runner
+    name: ${PROJECT_NAME}_15gitlab-runner
